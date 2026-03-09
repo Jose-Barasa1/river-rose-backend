@@ -6,5 +6,6 @@ psycopg2-binary
 passlib[bcrypt]
 python-jose[cryptography]
 pydantic[email]
+pydantic-settings
 python-dotenv
 alembic
