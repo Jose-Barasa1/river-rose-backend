@@ -6,14 +6,16 @@ from app.routers import auth, products, orders, reviews
 # Create all tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="River Rose API", version="2.0.0")
+app = FastAPI(title="River Rose API", version="1.0.0")
 
-# CORS — add your Vercel URL here
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "https://river-rose.vercel.app",
+        "https://river-rose-git-main-jose-barasa1s-projects.vercel.app",
+        "https://river-rose-42b8iwo2p-jose-barasa1s-projects.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
