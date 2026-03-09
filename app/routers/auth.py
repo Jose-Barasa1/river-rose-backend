@@ -41,14 +41,20 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password[:72])
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain[:72], hashed)
+
+
 @router.post("/signup", response_model=schemas.Token)
 def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
     if user.password != user.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match.")
     if db.query(models.User).filter(models.User.email == user.email).first():
         raise HTTPException(status_code=409, detail="An account with this email already exists.")
-    hashed_password = pwd_context.hash(user.password)
-    db_user = models.User(name=user.name, email=user.email, password_hash=hashed_password)
+    db_user = models.User(name=user.name, email=user.email, password_hash=hash_password(user.password))
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -59,7 +65,7 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
 @router.post("/login", response_model=schemas.Token)
 def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if not db_user or not pwd_context.verify(user.password, db_user.password_hash):
+    if not db_user or not verify_password(user.password, db_user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     token = create_access_token({"sub": str(db_user.id)})
     return {"access_token": token}
