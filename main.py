@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
-from app.routers import auth, products, orders, reviews,mpesa
+from app.routers import auth, products, orders, reviews,mpesa,community
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -28,6 +28,7 @@ app.include_router(products.router, prefix="/api/products", tags=["Products"])
 app.include_router(orders.router,   prefix="/api/orders",   tags=["Orders"])
 app.include_router(reviews.router,  prefix="/api/reviews",  tags=["Reviews"])
 app.include_router(mpesa.router,    prefix="/api/mpesa",    tags=["Mpesa"])
+app.include_router(community.router, prefix="/api/community", tags=["Community"])
 
 @app.get("/")
 def root():

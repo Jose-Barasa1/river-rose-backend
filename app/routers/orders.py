@@ -14,10 +14,6 @@ def create_order(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """
-    Protected — creates an order from the cart.
-    Expects: { items: [{ product_id, quantity }] }
-    """
     if not order_data.items:
         raise HTTPException(status_code=400, detail="Cart is empty.")
 
@@ -40,16 +36,19 @@ def create_order(
                 unit_price=unit_price,
             )
         )
-        # Deduct stock
         product.stock -= item.quantity
 
     order = models.Order(
-        user_id=current_user.id,
-        total_price=round(total, 2),
-        status="pending",
+        user_id          = current_user.id,
+        total_price      = round(total, 2),
+        status           = "pending",
+        delivery_name    = order_data.delivery_name,
+        delivery_phone   = order_data.delivery_phone,
+        delivery_address = order_data.delivery_address,
+        delivery_notes   = order_data.delivery_notes,
     )
     db.add(order)
-    db.flush()  # get order.id before adding items
+    db.flush()
 
     for oi in order_items:
         oi.order_id = order.id
@@ -65,7 +64,6 @@ def get_my_orders(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Protected — returns all orders for the logged-in user."""
     return (
         db.query(models.Order)
         .filter(models.Order.user_id == current_user.id)
@@ -80,11 +78,27 @@ def get_order(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Protected — returns a single order (only if it belongs to the current user)."""
     order = db.query(models.Order).filter(
         models.Order.id == order_id,
         models.Order.user_id == current_user.id,
     ).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")
+    return order
+
+
+@router.patch("/{order_id}/status")
+def update_order_status(
+    order_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Admin — update order status."""
+    order = db.query(models.Order).filter(models.Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found.")
+    order.status = payload.get("status", order.status)
+    db.commit()
+    db.refresh(order)
     return order

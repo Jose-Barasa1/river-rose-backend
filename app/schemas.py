@@ -54,25 +54,40 @@ class ProductOut(BaseModel):
 # ── Orders ────────────────────────────────────────────
 class OrderItemIn(BaseModel):
     product_id: int
-    quantity: int
+    quantity:   int
 
 class OrderCreate(BaseModel):
-    items: List[OrderItemIn]
+    items:            List[OrderItemIn]
+    delivery_name:    Optional[str] = None
+    delivery_phone:   Optional[str] = None
+    delivery_address: Optional[str] = None
+    delivery_notes:   Optional[str] = None
 
 class OrderItemOut(BaseModel):
     product_id: int
-    quantity: int
+    quantity:   int
     unit_price: float
 
     class Config:
         from_attributes = True
 
 class OrderOut(BaseModel):
-    id: int
-    total_price: float
-    status: str
-    created_at: datetime
-    items: List[OrderItemOut]
+    id:               int
+    total_price:      float
+    status:           str
+    created_at:       datetime
+    items:            List[OrderItemOut]
+
+    # Delivery
+    delivery_name:    Optional[str] = None
+    delivery_phone:   Optional[str] = None
+    delivery_address: Optional[str] = None
+    delivery_notes:   Optional[str] = None
+
+    # M-Pesa
+    mpesa_code:           Optional[str] = None
+    payment_phone:        Optional[str] = None
+    checkout_request_id:  Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -80,16 +95,34 @@ class OrderOut(BaseModel):
 
 # ── Reviews ───────────────────────────────────────────
 class ReviewCreate(BaseModel):
-    name: str
-    comment: str
-    rating: int = 5
+    name:       str
+    comment:    str
+    rating:     int = 5
     product_id: Optional[int] = None
 
 class ReviewOut(BaseModel):
-    id: int
+    id:         int
+    name:       str
+    comment:    str
+    rating:     int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ── Community Posts ───────────────────────────────────
+class CommunityPostCreate(BaseModel):
     name: str
-    comment: str
-    rating: int
+    text: str
+    tag:  Optional[str] = None
+
+class CommunityPostOut(BaseModel):
+    id:         int
+    name:       str
+    text:       str
+    likes:      int
+    tag:        Optional[str] = None
     created_at: datetime
 
     class Config:
