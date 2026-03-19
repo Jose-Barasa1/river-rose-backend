@@ -7,7 +7,7 @@ from app.models import Order
 import httpx, base64, os
 from datetime import datetime
 
-router = APIRouter()  # ← no prefix here, main.py handles it
+router = APIRouter()
 
 CONSUMER_KEY    = os.getenv("MPESA_CONSUMER_KEY")
 CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET")
@@ -29,7 +29,6 @@ async def get_access_token() -> str:
         return data["access_token"]
 
 
-# ── Debug route ──────────────────────────────────────────────
 @router.get("/test-token")
 async def test_token():
     try:
@@ -123,8 +122,9 @@ async def mpesa_callback(payload: dict, db: Session = Depends(get_db)):
     return {"ResultCode": 0, "ResultDesc": "Success"}
 
 
+# ── KEY CHANGE: now takes db and updates order when paid ──
 @router.get("/status/{checkout_request_id}")
-async def check_status(checkout_request_id: str):
+async def check_status(checkout_request_id: str, db: Session = Depends(get_db)):
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     password  = base64.b64encode(f"{SHORTCODE}{PASSKEY}{timestamp}".encode()).decode()
     try:
@@ -141,8 +141,21 @@ async def check_status(checkout_request_id: str):
                 }
             )
         data = res.json()
+        paid = data.get("ResultCode") == "0"
+
+        # If paid — update the order status and save receipt code
+        if paid:
+            order = db.query(Order).filter(
+                Order.checkout_request_id == checkout_request_id
+            ).first()
+            if order and not order.mpesa_code:
+                order.status        = "confirmed"
+                order.mpesa_code    = data.get("MpesaReceiptNumber") or f"SANDBOX-{checkout_request_id[:8]}"
+                order.payment_phone = str(data.get("PhoneNumber", ""))
+                db.commit()
+
         return {
-            "paid":    data.get("ResultCode") == "0",
+            "paid":    paid,
             "message": data.get("ResultDesc", "Pending")
         }
     except Exception as e:
