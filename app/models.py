@@ -23,7 +23,7 @@ class Product(Base):
     price = Column(Float)
     description = Column(Text, nullable=True)
     category = Column(String(100), nullable=True)
-    image = Column(String(500), nullable=True)   # Cloudinary URL
+    image = Column(String(500), nullable=True)
     stock = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -36,8 +36,13 @@ class Order(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     total_price = Column(Float)
-    status = Column(String, default="pending")  # pending, confirmed, shipped, delivered
+    status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # ── M-Pesa fields ──────────────────────────
+    mpesa_code            = Column(String(50),  nullable=True)
+    payment_phone         = Column(String(20),  nullable=True)
+    checkout_request_id   = Column(String(100), nullable=True)
 
     user = relationship("User", back_populates="orders")
     items = relationship("OrderItem", back_populates="order")
@@ -60,10 +65,20 @@ class Review(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
-    name = Column(String(120))       # for guest reviews
+    name = Column(String(120))
     comment = Column(Text)
     rating = Column(Integer, default=5)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="reviews")
     product = relationship("Product", back_populates="reviews")
+
+
+class CommunityPost(Base):
+    __tablename__ = "community_posts"
+    id         = Column(Integer, primary_key=True, index=True)
+    name       = Column(String(120), nullable=False)
+    text       = Column(Text, nullable=False)
+    likes      = Column(Integer, default=0)
+    tag        = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
