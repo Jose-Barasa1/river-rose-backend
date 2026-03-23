@@ -127,9 +127,11 @@ async def mpesa_callback(payload: dict, db: Session = Depends(get_db)):
 async def check_status(checkout_request_id: str, db: Session = Depends(get_db)):
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     password  = base64.b64encode(f"{SHORTCODE}{PASSKEY}{timestamp}".encode()).decode()
+
     try:
         token = await get_access_token()
-        async with httpx.AsyncClient() as client:
+
+        async with httpx.AsyncClient(timeout=20) as client:
             res = await client.post(
                 "https://sandbox.safaricom.co.ke/mpesa/stkpushquery/v1/query",
                 headers={"Authorization": f"Bearer {token}"},
@@ -140,23 +142,51 @@ async def check_status(checkout_request_id: str, db: Session = Depends(get_db)):
                     "CheckoutRequestID": checkout_request_id,
                 }
             )
-        data = res.json()
-        paid = data.get("ResultCode") == "0"
 
-        # If paid — update the order status and save receipt code
+        # ✅ Ensure HTTP success
+        if res.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=f"M-Pesa API error: {res.text}"
+            )
+
+        # ✅ Safely parse JSON
+        try:
+            data = res.json()
+        except Exception:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Invalid JSON from M-Pesa: {res.text}"
+            )
+
+        # ✅ Correct success check
+        result_code = data.get("ResultCode")
+        result_desc = data.get("ResultDesc", "")
+
+        paid = str(result_code) == "0"
+
+        # ✅ Update DB if paid
         if paid:
             order = db.query(Order).filter(
                 Order.checkout_request_id == checkout_request_id
             ).first()
+
             if order and not order.mpesa_code:
-                order.status        = "confirmed"
-                order.mpesa_code    = data.get("MpesaReceiptNumber") or f"SANDBOX-{checkout_request_id[:8]}"
+                order.status = "confirmed"
+
+                # Safe extraction
+                order.mpesa_code = data.get("MpesaReceiptNumber") or f"SANDBOX-{checkout_request_id[:8]}"
                 order.payment_phone = str(data.get("PhoneNumber", ""))
+
                 db.commit()
 
         return {
-            "paid":    paid,
-            "message": data.get("ResultDesc", "Pending")
+            "paid": paid,
+            "message": result_desc or "Pending"
         }
+
+    except HTTPException:
+        raise
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
