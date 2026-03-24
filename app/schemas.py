@@ -27,6 +27,11 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+class SetPassword(BaseModel):
+    token: str
+    password: str
+    confirm_password: str
+
 
 # ── Products ──────────────────────────────────────────
 class ProductCreate(BaseModel):
@@ -59,6 +64,7 @@ class OrderItemIn(BaseModel):
 class OrderCreate(BaseModel):
     items:            List[OrderItemIn]
     delivery_name:    Optional[str] = None
+    delivery_email:   Optional[EmailStr] = None   # used to create/match account
     delivery_phone:   Optional[str] = None
     delivery_address: Optional[str] = None
     delivery_notes:   Optional[str] = None

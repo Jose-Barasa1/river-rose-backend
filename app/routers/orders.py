@@ -1,23 +1,85 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+from datetime import datetime, timedelta
+import secrets
+
 from app.database import get_db
 from app import models, schemas
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, create_access_token
+from app.email import send_set_password_email
 
 router = APIRouter()
+
+
+def get_optional_user(
+    db: Session = Depends(get_db),
+    token: Optional[str] = None,
+) -> Optional[models.User]:
+    """Returns the logged-in user if token is valid, otherwise None (guest)."""
+    try:
+        return get_current_user(db=db)
+    except Exception:
+        return None
 
 
 @router.post("/", response_model=schemas.OrderOut)
 def create_order(
     order_data: schemas.OrderCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: Optional[models.User] = Depends(get_optional_user),
 ):
     if not order_data.items:
         raise HTTPException(status_code=400, detail="Cart is empty.")
 
-    total = 0.0
+    # ── Guest flow ────────────────────────────────────────────────────────
+    if not current_user:
+        # Require delivery details for guests
+        missing = [
+            field for field in ("delivery_name", "delivery_phone", "delivery_address")
+            if not getattr(order_data, field, None)
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Please fill in: {', '.join(missing)}."
+            )
+
+        if order_data.delivery_email:
+            existing = db.query(models.User).filter(
+                models.User.email == order_data.delivery_email
+            ).first()
+
+            if existing:
+                # Email already in DB — attach order to their account and log them in
+                current_user = existing
+            else:
+                # Brand new guest — create a passwordless account
+                token       = secrets.token_urlsafe(48)
+                token_exp   = datetime.utcnow() + timedelta(hours=48)
+                new_user    = models.User(
+                    name                  = order_data.delivery_name,
+                    email                 = order_data.delivery_email,
+                    password_hash         = None,           # no password yet
+                    set_password_token    = token,
+                    set_password_token_exp= token_exp,
+                )
+                db.add(new_user)
+                db.flush()  # get the id without committing yet
+                current_user = new_user
+
+                # Send set-password email (non-blocking — order still saves if email fails)
+                try:
+                    send_set_password_email(
+                        to_email=order_data.delivery_email,
+                        name=order_data.delivery_name,
+                        token=token,
+                    )
+                except Exception:
+                    pass  # don't block the order if email fails
+
+    # ── Build order ───────────────────────────────────────────────────────
+    total       = 0.0
     order_items = []
 
     for item in order_data.items:
@@ -28,7 +90,7 @@ def create_order(
             raise HTTPException(status_code=400, detail=f"Not enough stock for {product.name}.")
 
         unit_price = product.price
-        total += unit_price * item.quantity
+        total     += unit_price * item.quantity
         order_items.append(
             models.OrderItem(
                 product_id=product.id,
@@ -39,7 +101,7 @@ def create_order(
         product.stock -= item.quantity
 
     order = models.Order(
-        user_id          = current_user.id,
+        user_id          = current_user.id if current_user else None,
         total_price      = round(total, 2),
         status           = "pending",
         delivery_name    = order_data.delivery_name,
