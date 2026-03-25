@@ -87,6 +87,7 @@ class OrderOut(BaseModel):
     # Delivery
     delivery_name:    Optional[str] = None
     delivery_phone:   Optional[str] = None
+    delivery_email:   EmailStr
     delivery_address: Optional[str] = None
     delivery_notes:   Optional[str] = None
 

@@ -44,6 +44,7 @@ class Order(Base):
     # ── Delivery ───────────────────────────────
     delivery_name    = Column(String(120), nullable=True)
     delivery_phone   = Column(String(20),  nullable=True)
+    delivery_email   = Column(String(140), nullable=True)
     delivery_address = Column(String(255), nullable=True)
     delivery_notes   = Column(String(500), nullable=True)
 

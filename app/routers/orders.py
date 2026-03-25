@@ -132,6 +132,7 @@ def create_order(
         status           = "pending",
         delivery_name    = order_data.delivery_name,
         delivery_phone   = order_data.delivery_phone,
+        delivery_email   = order_data.delivery_email,
         delivery_address = order_data.delivery_address,
         delivery_notes   = order_data.delivery_notes,
     )
