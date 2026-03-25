@@ -27,10 +27,11 @@ def create_access_token(data: dict):
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user_from_token(token: str, db: Session) -> models.User:
+    """Same as get_current_user but accepts a raw token string — used for optional auth."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired token. Please log in again.",
+        detail="Invalid or expired token.",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
@@ -44,6 +45,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    return get_current_user_from_token(token=token, db=db)
 
 
 @router.post("/signup", response_model=schemas.Token)
@@ -69,7 +74,6 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if not db_user:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
-    # Block login if account has no password yet (guest account, not yet activated)
     if not db_user.password_hash:
         raise HTTPException(
             status_code=403,
@@ -83,11 +87,6 @@ def login(user: schemas.UserLogin, db: Session = Depends(get_db)):
 
 @router.post("/set-password", response_model=schemas.Token)
 def set_password(payload: schemas.SetPassword, db: Session = Depends(get_db)):
-    """
-    Called when a guest clicks the link in their order confirmation email.
-    Validates the one-time token, sets their password, and returns an access token
-    so they're immediately logged in.
-    """
     if payload.password != payload.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match.")
 
@@ -101,7 +100,6 @@ def set_password(payload: schemas.SetPassword, db: Session = Depends(get_db)):
     if user.set_password_token_exp < datetime.utcnow():
         raise HTTPException(status_code=400, detail="This link has expired. Please place a new order or contact support.")
 
-    # Set the password and clear the one-time token
     user.password_hash          = hash_password(payload.password)
     user.set_password_token     = None
     user.set_password_token_exp = None

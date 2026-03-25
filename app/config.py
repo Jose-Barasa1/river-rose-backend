@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     MAIL_PASSWORD: str = "your-app-password"
     MAIL_FROM: str = "you@gmail.com"
 
+    ADMIN_EMAIL: str = "25@gmail.com"  # ← single admin account
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

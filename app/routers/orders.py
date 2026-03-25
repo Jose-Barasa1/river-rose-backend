@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -6,22 +6,39 @@ import secrets
 
 from app.database import get_db
 from app import models, schemas
-from app.routers.auth import get_current_user, create_access_token
+from app.routers.auth import get_current_user, get_current_user_from_token
 from app.email import send_set_password_email
+from app.config import settings
 
 router = APIRouter()
 
 
+# ── Admin helper ──────────────────────────────────────────────────────────────
+
+def require_admin(current_user: models.User = Depends(get_current_user)):
+    """Raises 403 if the current user is not the designated admin."""
+    if current_user.email != settings.ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Admins only.")
+    return current_user
+
+
+# ── Optional user (for guest checkout) ───────────────────────────────────────
+
 def get_optional_user(
+    request: Request,
     db: Session = Depends(get_db),
-    token: Optional[str] = None,
 ) -> Optional[models.User]:
     """Returns the logged-in user if token is valid, otherwise None (guest)."""
     try:
-        return get_current_user(db=db)
+        token = request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        if not token:
+            return None
+        return get_current_user_from_token(token=token, db=db)
     except Exception:
         return None
 
+
+# ── Create order ──────────────────────────────────────────────────────────────
 
 @router.post("/", response_model=schemas.OrderOut)
 def create_order(
@@ -34,7 +51,49 @@ def create_order(
 
     # ── Guest flow ────────────────────────────────────────────────────────
     if not current_user:
-        # Require delivery details for guests
+        missing = [
+            field for field in ("delivery_name", "delivery_phone", "delivery_address", "delivery_email")
+            if not getattr(order_data, field, None)
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Please fill in: {', '.join(missing)}."
+            )
+
+        existing = db.query(models.User).filter(
+            models.User.email == order_data.delivery_email
+        ).first()
+
+        if existing:
+            # Attach order to existing account
+            current_user = existing
+        else:
+            # Create passwordless guest account
+            token       = secrets.token_urlsafe(48)
+            token_exp   = datetime.utcnow() + timedelta(hours=48)
+            new_user    = models.User(
+                name                   = order_data.delivery_name,
+                email                  = order_data.delivery_email,
+                password_hash          = None,
+                set_password_token     = token,
+                set_password_token_exp = token_exp,
+            )
+            db.add(new_user)
+            db.flush()
+            current_user = new_user
+
+            try:
+                send_set_password_email(
+                    to_email=order_data.delivery_email,
+                    name=order_data.delivery_name,
+                    token=token,
+                )
+            except Exception:
+                pass  # don't block order if email fails
+
+    # ── Logged-in user: require delivery details if not provided ──────────
+    else:
         missing = [
             field for field in ("delivery_name", "delivery_phone", "delivery_address")
             if not getattr(order_data, field, None)
@@ -44,39 +103,6 @@ def create_order(
                 status_code=422,
                 detail=f"Please fill in: {', '.join(missing)}."
             )
-
-        if order_data.delivery_email:
-            existing = db.query(models.User).filter(
-                models.User.email == order_data.delivery_email
-            ).first()
-
-            if existing:
-                # Email already in DB — attach order to their account and log them in
-                current_user = existing
-            else:
-                # Brand new guest — create a passwordless account
-                token       = secrets.token_urlsafe(48)
-                token_exp   = datetime.utcnow() + timedelta(hours=48)
-                new_user    = models.User(
-                    name                  = order_data.delivery_name,
-                    email                 = order_data.delivery_email,
-                    password_hash         = None,           # no password yet
-                    set_password_token    = token,
-                    set_password_token_exp= token_exp,
-                )
-                db.add(new_user)
-                db.flush()  # get the id without committing yet
-                current_user = new_user
-
-                # Send set-password email (non-blocking — order still saves if email fails)
-                try:
-                    send_set_password_email(
-                        to_email=order_data.delivery_email,
-                        name=order_data.delivery_name,
-                        token=token,
-                    )
-                except Exception:
-                    pass  # don't block the order if email fails
 
     # ── Build order ───────────────────────────────────────────────────────
     total       = 0.0
@@ -121,11 +147,20 @@ def create_order(
     return order
 
 
+# ── Get orders ────────────────────────────────────────────────────────────────
+
 @router.get("/", response_model=List[schemas.OrderOut])
-def get_my_orders(
+def get_orders(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    # Admin sees all orders; regular users see only their own
+    if current_user.email == settings.ADMIN_EMAIL:
+        return (
+            db.query(models.Order)
+            .order_by(models.Order.created_at.desc())
+            .all()
+        )
     return (
         db.query(models.Order)
         .filter(models.Order.user_id == current_user.id)
@@ -134,29 +169,33 @@ def get_my_orders(
     )
 
 
+# ── Get single order ──────────────────────────────────────────────────────────
+
 @router.get("/{order_id}", response_model=schemas.OrderOut)
 def get_order(
     order_id: int,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    order = db.query(models.Order).filter(
-        models.Order.id == order_id,
-        models.Order.user_id == current_user.id,
-    ).first()
+    query = db.query(models.Order).filter(models.Order.id == order_id)
+    if current_user.email != settings.ADMIN_EMAIL:
+        query = query.filter(models.Order.user_id == current_user.id)
+
+    order = query.first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")
     return order
 
+
+# ── Update order status (admin only) ─────────────────────────────────────────
 
 @router.patch("/{order_id}/status")
 def update_order_status(
     order_id: int,
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(require_admin),
 ):
-    """Admin — update order status."""
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")
