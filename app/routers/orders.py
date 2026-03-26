@@ -190,6 +190,8 @@ def get_order(
 
 # ── Update order status (admin only) ─────────────────────────────────────────
 
+# ── Update order status (admin only) ─────────────────────────────────────────
+
 @router.patch("/{order_id}/status")
 def update_order_status(
     order_id: int,
@@ -200,7 +202,39 @@ def update_order_status(
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found.")
-    order.status = payload.get("status", order.status)
+    
+    new_status = payload.get("status")
+    
+    # Define all valid statuses
+    valid_statuses = ["pending", "confirmed", "shipped", "outForDelivery", "delivered", "cancelled"]
+    
+    # Validate the status
+    if new_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+        )
+    
+    # Define allowed transitions
+    allowed_transitions = {
+        "pending": ["confirmed", "cancelled"],
+        "confirmed": ["shipped", "cancelled"],
+        "shipped": ["outForDelivery", "cancelled"],
+        "outForDelivery": ["delivered", "cancelled"],
+        "delivered": [],  # Cannot change from delivered
+        "cancelled": [],  # Cannot change from cancelled
+    }
+    
+    # Check if transition is allowed
+    current_status = order.status
+    if new_status not in allowed_transitions.get(current_status, []):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot change status from {current_status} to {new_status}"
+        )
+    
+    # Update the status
+    order.status = new_status
     db.commit()
     db.refresh(order)
     return order

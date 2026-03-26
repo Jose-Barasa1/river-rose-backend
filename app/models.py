@@ -9,9 +9,9 @@ class User(Base):
     id            = Column(Integer, primary_key=True, index=True)
     name          = Column(String(120))
     email         = Column(String(120), unique=True, index=True)
-    password_hash = Column(String(256), nullable=True)   # nullable for guest-created accounts
-    set_password_token    = Column(String(256), nullable=True)  # one-time token sent via email
-    set_password_token_exp = Column(DateTime,   nullable=True)  # token expiry
+    password_hash = Column(String(256), nullable=True)
+    set_password_token    = Column(String(256), nullable=True)
+    set_password_token_exp = Column(DateTime,   nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow)
 
     orders  = relationship("Order",  back_populates="user")
@@ -36,8 +36,9 @@ class Product(Base):
 class Order(Base):
     __tablename__ = "orders"
     id          = Column(Integer, primary_key=True, index=True)
-    user_id     = Column(Integer, ForeignKey("users.id"), nullable=True)  # None = guest order
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=True)
     total_price = Column(Float)
+    # UPDATE THIS LINE - add all possible statuses
     status      = Column(String, default="pending")
     created_at  = Column(DateTime, default=datetime.utcnow)
 
