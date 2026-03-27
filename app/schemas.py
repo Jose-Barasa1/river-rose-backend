@@ -1,3 +1,4 @@
+# app/schemas.py
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
@@ -18,6 +19,8 @@ class UserOut(BaseModel):
     id: int
     name: str
     email: str
+    is_admin: bool = False  # ADD THIS FIELD
+    last_login: Optional[datetime] = None  # ADD THIS FIELD
     created_at: datetime
 
     class Config:
@@ -31,6 +34,37 @@ class SetPassword(BaseModel):
     token: str
     password: str
     confirm_password: str
+
+
+# ── Admin Schemas (ADD THESE) ───────────────────────────────────
+class AdminUserUpdate(BaseModel):
+    """Update user role - only for admin"""
+    is_admin: bool
+
+class AdminUserOut(UserOut):
+    """Admin user output with admin flag"""
+    is_admin: bool = True
+
+class DashboardStats(BaseModel):
+    """Dashboard statistics for admin"""
+    total_users: int
+    total_products: int
+    total_orders: int
+    pending_orders: int
+    total_revenue: float
+    recent_orders: List[dict]
+
+class UserDetails(BaseModel):
+    """Detailed user information for admin"""
+    id: int
+    name: str
+    email: str
+    is_admin: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    orders_count: int
+    total_spent: float
+    orders: List[dict]
 
 
 # ── Products ──────────────────────────────────────────
@@ -134,3 +168,25 @@ class CommunityPostOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Additional Admin Endpoint Responses (OPTIONAL) ─────────────────
+class AdminUserCreate(BaseModel):
+    """Create admin user (only for initial setup)"""
+    name: str
+    email: EmailStr
+    password: str
+    is_admin: bool = True
+
+class OrderStatusUpdate(BaseModel):
+    """Update order status"""
+    status: str  # pending, confirmed, packed, shipped, delivered, cancelled
+
+class ProductUpdate(BaseModel):
+    """Update product details"""
+    name: Optional[str] = None
+    price: Optional[float] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    image: Optional[str] = None
+    stock: Optional[int] = None

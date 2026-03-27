@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Text
+# app/models.py
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Text, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -10,6 +11,8 @@ class User(Base):
     name          = Column(String(120))
     email         = Column(String(120), unique=True, index=True)
     password_hash = Column(String(256), nullable=True)
+    is_admin      = Column(Boolean, default=False)  # ADD THIS FIELD
+    last_login    = Column(DateTime, nullable=True)  # ADD THIS FIELD
     set_password_token    = Column(String(256), nullable=True)
     set_password_token_exp = Column(DateTime,   nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow)
@@ -38,18 +41,18 @@ class Order(Base):
     id          = Column(Integer, primary_key=True, index=True)
     user_id     = Column(Integer, ForeignKey("users.id"), nullable=True)
     total_price = Column(Float)
-    # UPDATE THIS LINE - add all possible statuses
-    status      = Column(String, default="pending")
+    status      = Column(String, default="pending")  # pending, confirmed, packed, shipped, delivered, cancelled
     created_at  = Column(DateTime, default=datetime.utcnow)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)  # ADD THIS
 
-    # ── Delivery ───────────────────────────────
+    # Delivery
     delivery_name    = Column(String(120), nullable=True)
     delivery_phone   = Column(String(20),  nullable=True)
     delivery_email   = Column(String(140), nullable=True)
     delivery_address = Column(String(255), nullable=True)
     delivery_notes   = Column(String(500), nullable=True)
 
-    # ── M-Pesa ─────────────────────────────────
+    # M-Pesa
     mpesa_code          = Column(String(50),  nullable=True)
     payment_phone       = Column(String(20),  nullable=True)
     checkout_request_id = Column(String(100), nullable=True)
